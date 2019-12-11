@@ -15,23 +15,23 @@ questions:
   label: Ingress Enabled
   show_subquestion_if: true
   group: "Ingress Settings"
-  subquestions:
-  - variable: ingress.proto
-      default: "https"
-      description: "Ingress Protocol"
-      type: string
-      options: ["http", "https"]
-      label: Ingress Protocol
-      required: true
-  - variable: ingress.domain
-      default: ""
-      description: "Primary Domain Name to use for Ingress"
-      type: string
-      label: Ingress Domain
-      required: true
-  - variable: ingress.host
-      default: ""
-      description: "Host / secondary name to use for Ingress"
-      type: string
-      label: Ingress Host
-      required: true
+#   subquestions:
+#   - variable: ingress.proto
+#       default: "https"
+#       description: "Ingress Protocol"
+#       type: string
+#       options: ["http", "https"]
+#       label: Ingress Protocol
+#       required: true
+#   - variable: ingress.domain
+#       default: ""
+#       description: "Primary Domain Name to use for Ingress"
+#       type: string
+#       label: Ingress Domain
+#       required: true
+#   - variable: ingress.host
+#       default: ""
+#       description: "Host / secondary name to use for Ingress"
+#       type: string
+#       label: Ingress Host
+#       required: true
