@@ -35,10 +35,3 @@ questions:
       type: string
       label: Ingress Host
       required: true
-  - variable: ingress.annotations[0].kubernetes.io/ingress.class
-      default: "nginx"
-      description: "Ingress Class name"
-      type: string
-      label: Ingress Class
-      required: true
-
