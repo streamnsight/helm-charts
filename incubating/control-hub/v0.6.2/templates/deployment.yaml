@@ -1,0 +1,190 @@
+{{- $externalPort := include "externalPort" . }}
+{{- range $deployment := .Values.deployments }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: "{{ include "control-hub.fullname" $ }}-{{ $deployment.name | replace "_" "-" }}"
+  labels:
+    app.kubernetes.io/name: {{ $deployment.name | quote }}
+    app.kubernetes.io/component: {{ $deployment.appsToStart }}
+    app.kubernetes.io/part-of: {{ include "control-hub.name" $ }}
+    app.kubernetes.io/instance: {{ $.Release.Name }}
+    app.kubernetes.io/managed-by: {{ $.Release.Service }}
+    helm.sh/chart: {{ include "control-hub.chart" $ }}
+spec:
+  replicas: {{ $deployment.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $deployment.name | quote }}
+      app.kubernetes.io/instance: {{ $.Release.Name }}
+      app.kubernetes.io/part-of: {{ include "control-hub.name" $ }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ $deployment.name | quote }}
+        app.kubernetes.io/instance: {{ $.Release.Name }}
+        app.kubernetes.io/part-of: {{ include "control-hub.name" $ }}
+    spec:
+      initContainers:
+      # check if the DB is up, and the table were populated.
+      - name: init-mysql
+        image: mysql
+        env:
+        - name: DB_USER
+          value: "root"
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: "{{ template "mysql.fullname" $ }}"
+              key: mysql-root-password
+        - name: DB_HOST
+          value: "{{ template "mysql.fullname" $ }}.{{ $.Release.Namespace }}.svc.cluster.local"
+        - name: DB_PORT
+          value: "3306"
+        command: ['sh', '-c', 
+          'i=100; until [ $i -eq 0 ] || mysql -w --connect-timeout=5 -s -N -h"${DB_HOST}" -P"${DB_PORT}" -u"${DB_USER}" -p"${DB_PASSWORD}" -e "SELECT * FROM {{ $deployment.name }}.APPLICATION_INFO;"; do sleep 3; i=$((i-1)); done ']
+      {{- if ne $deployment.name "security" }}
+      # Check if the security app is up. It is needed to register properly
+      - name: init-security
+        image: busybox
+        env:
+        - name: SECURITY_APP_HEALTH_URI
+          value: "http://{{ include "control-hub.fullname" $ }}-security.{{ $.Release.Namespace }}.svc.cluster.local:18631/public-rest/v1/health"
+        command: ['sh', '-c', 
+          'i=100; until [ $i -eq 0 ] || wget -O/dev/null -q ${SECURITY_APP_HEALTH_URI}; do sleep 3; i=$((i-1)); done ']
+      {{- end -}}
+      {{- if $.Values.image.pullSecret }}
+      imagePullSecrets:
+      - name: "{{ $.Values.image.pullSecret }}"
+      {{- end }}
+      containers:
+        - name: haveged
+          image: "harbur/haveged:1.7c-1"
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            capabilities:
+              add: ["SYS_ADMIN"]
+        - name: {{ $deployment.name | replace "_" "-" }}
+          image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag }}"
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          securityContext:
+            runAsNonRoot: true
+          env:
+          {{- range $key, $val := $deployment.container.env }}
+          - name: {{ $key }}
+            value: "{{ $val }}"
+          {{- end }}
+          - name: INIT_SECURITY
+            value: "true"
+          - name: DPM_CONF_APPS_TO_START
+            value: {{ $deployment.appsToStart }}
+          {{- range $app := $.Values.apps }}
+          - name: "DPM_CONF_DPM_APP_{{ $app.name | upper }}_URL"
+            value: "{{ $.Values.appProto }}://{{ include "control-hub.fullname" $ }}-{{ $app.name | replace "_" "-" }}.{{ $.Release.Namespace }}.svc.cluster.local:{{ $.Values.service.port }}"
+          {{- end }}
+          - name: DPM_CONF_DPM_BASE_URL
+            value: "{{ $.Values.ingress.proto }}://{{ $.Values.ingress.host }}.{{ $.Values.ingress.domain }}{{ $externalPort }}"
+          - name: DPM_CONF_DB_URL
+            value: "{{ $.Values.influxdb.proto }}://{{ template "influxdb.fullname" $ }}.{{ $.Release.Namespace }}.svc.cluster.local:{{ $.Values.influxdb.config.http.bind_address }}"
+          - name: DPM_CONF_DB_NAME
+            value: "dpm"
+          - name: DPM_CONF_DB_USER
+            value: {{ $.Values.schInfluxUser }}
+          - name: DPM_CONF_DB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: "{{ include "control-hub.fullname" $ }}"
+                key: influxdb-password
+          - name: DPM_CONF_DPM_APP_DB_URL
+            value: "{{ $.Values.influxdb.proto }}://{{ template "influxdb.fullname" $ }}.{{ $.Release.Namespace }}.svc.cluster.local:{{ $.Values.influxdb.config.http.bind_address }}"
+          - name: DPM_CONF_DPM_APP_DB_NAME
+            value: "dpm_app"
+          - name: DPM_CONF_DPM_APP_DB_USER
+            value: {{ $.Values.schInfluxUser }}
+          - name: DPM_CONF_DPM_APP_DB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: "{{ include "control-hub.fullname" $ }}"
+                key: influxdb-password
+          - name: DB_USER
+            value: "root"
+          - name: DB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ template "mysql.fullname" $ }}
+                key: mysql-root-password
+          - name: DB_HOST
+            value: "{{ template "mysql.fullname" $ }}.{{ $.Release.Namespace }}.svc.cluster.local"
+          - name: DB_PORT
+            value: "3306"
+          - name: DPM_ADMIN_APP_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: "{{ include "control-hub.fullname" $ }}"
+                key: admin-password
+          - name: DPM_CONF_PIPELINE_DESIGNER_SYSTEM_SDC_URL
+            value: "http://{{ include "control-hub.fullname" $ }}-system-dc.{{ $.Release.Namespace }}.svc.cluster.local:18630"
+          - name: DPM_CONF_MAIL_TRANSPORT_PROTOCOL
+            value: {{ default "smtp" $.Values.mailProtocol }}
+          - name: DPM_CONF_MAIL_SMTP_HOST
+            value: {{ default "none" $.Values.mailHost }}
+          - name: DPM_CONF_MAIL_SMTP_PORT
+            value: {{ default "587" $.Values.mailPort | quote }}
+          - name: DPM_CONF_MAIL_SMTP_STARTTLS_ENABLE
+            value: {{ default "true" $.Values.mailStarttls | quote }}
+          - name: DPM_CONF_MAIL_SMTP_AUTH
+          {{- if $.Values.mailUsername }}
+            value: {{ "true" | quote }}
+          {{- else }}
+            value: {{ "false" | quote }}
+          {{- end }}
+          - name: DPM_CONF_MAIL_SMTPS_HOST
+            value: {{ default "none" $.Values.mailHost }}
+          - name: DPM_CONF_MAIL_SMTPS_PORT
+            value: {{ default "465" $.Values.mailPort | quote }}
+          - name: DPM_CONF_MAIL_SMTPS_AUTH
+          {{- if $.Values.mailUsername }}
+            value: {{ "true" | quote }}
+          {{- else }}
+            value: {{ "false" | quote }}
+          {{- end }}
+          - name: DPM_CONF_XMAIL_USERNAME
+            value: {{ $.Values.mailUsername }}
+          {{- if $.Values.mailUsername }}
+          - name: DPM_CONF_XMAIL_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: "{{ include "control-hub.fullname" $ }}"
+                key: mail-password
+          {{- end }}
+          - name: DPM_CONF_XMAIL_FROM_ADDRESS
+            value: {{ default "no-reply@streamsets.com" $.Values.mailFromAddress }}
+          ports:
+          - name: http
+            containerPort: {{ $.Values.service.port }}
+          - name: http-admin
+            containerPort: {{ $.Values.service.adminPort }}
+          livenessProbe:
+            exec:
+              command:
+              - curl
+              - -f
+              - http://localhost:18631/public-rest/v1/health
+            initialDelaySeconds: 180
+            timeoutSeconds: 1
+          readinessProbe:
+            exec:
+              command:
+              - curl
+              - -f
+              - http://localhost:18631/public-rest/v1/health
+            initialDelaySeconds: 180
+            timeoutSeconds: 1
+          resources:
+{{ toYaml $.Values.resources | indent 12 }}
+    {{- if $.Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml $.Values.nodeSelector | indent 8 }}
+    {{- end }}
+{{- end }}

@@ -1,0 +1,58 @@
+{{- if .Values.istio.enabled -}}
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: {{ template "influxdb.fullname" . }}
+  labels:
+    app.kubernetes.io/name: influxdb
+    app.kubernetes.io/component: database
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    helm.sh/chart: {{ include "control-hub.chart" . }}
+spec:
+  host: "{{ .Release.Name }}-influxdb.{{ .Release.Namespace }}.svc.cluster.local"
+  trafficPolicy:
+    tls:
+      {{- if eq .Values.istio.mTLS "DISABLE" }}
+      mode: DISABLE
+      {{ else }}
+      mode: ISTIO_MUTUAL
+      {{- end }}
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: "{{ include "control-hub.fullname" . }}-mysql"
+  labels:
+    app.kubernetes.io/name: mysql
+    app.kubernetes.io/component: database
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    helm.sh/chart: {{ include "control-hub.chart" . }}
+spec:
+  host: "{{ .Release.Name }}-mysql.{{ .Release.Namespace }}.svc.cluster.local"
+  trafficPolicy:
+    tls:
+      mode: DISABLE
+{{- range $app := .Values.apps }}
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: "{{ include "control-hub.fullname" $ }}-{{ $app.name | replace "_" "-" }}"
+  labels:
+    app.kubernetes.io/name: {{ $app.name | quote }}
+    app.kubernetes.io/instance: {{ $.Release.Name }}
+    app.kubernetes.io/managed-by: {{ $.Release.Service }}
+    helm.sh/chart: {{ include "control-hub.chart" $ }}
+spec:
+  host: "{{ include "control-hub.fullname" $ }}-{{ $app.name | replace "_" "-" }}.{{ $.Release.Namespace }}.svc.cluster.local"
+  trafficPolicy:
+    tls:
+      {{- if eq $.Values.istio.mTLS "DISABLE" }}
+      mode: DISABLE
+      {{ else }}
+      mode: ISTIO_MUTUAL
+      {{- end }}
+{{- end }}
+{{- end }}

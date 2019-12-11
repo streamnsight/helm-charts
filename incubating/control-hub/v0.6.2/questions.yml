@@ -1,0 +1,44 @@
+categories:
+- DataOps
+questions:
+- variable: image.tag
+  default: "3.13.0"
+  description: "Control Hub Docker image version"
+  type: string
+  required: true
+  label: Image Version
+- variable: ingress.enabled
+  default: false
+  description: "Enable Ingress"
+  type: boolean
+  required: true
+  label: Ingress Enabled
+  show_subquestion_if: true
+  group: "Ingress Settings"
+  subquestions:
+  - variable: ingress.proto
+      default: "https"
+      description: "Ingress Protocol"
+      type: string
+      options: ["http", "https"]
+      label: Ingress Protocol
+      required: true
+  - variable: ingress.domain
+      default: ""
+      description: "Primary Domain Name to use for Ingress"
+      type: string
+      label: Ingress Domain
+      required: true
+  - variable: ingress.host
+      default: ""
+      description: "Host / secondary name to use for Ingress"
+      type: string
+      label: Ingress Host
+      required: true
+  - variable: ingress.annotations[0].kubernetes.io/ingress.class
+      default: "nginx"
+      description: "Ingress Class name"
+      type: string
+      label: Ingress Class
+      required: true
+

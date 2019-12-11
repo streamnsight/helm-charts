@@ -1,0 +1,28 @@
+{{- range $app := .Values.apps }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: "{{ include "control-hub.fullname" $ }}-{{ $app.name | replace "_" "-" }}"
+  labels:
+    app.kubernetes.io/name: {{ $app.name | quote }}
+    app.kubernetes.io/component: {{ $app.name | quote }}
+    app.kubernetes.io/part-of: {{ include "control-hub.name" $ }}
+    app.kubernetes.io/instance: {{ $.Release.Name }}
+    app.kubernetes.io/managed-by: {{ $.Release.Service }}
+    helm.sh/chart: {{ include "control-hub.chart" $ }}
+spec:
+  type: {{ $.Values.service.type }}
+  ports:
+  - name: http
+    port: {{ $.Values.service.port }}
+    targetPort: {{ $.Values.service.port }}
+    protocol: TCP
+  - name: http-admin
+    port: {{ $.Values.service.adminPort }}
+    targetPort: {{ $.Values.service.adminPort }}
+    protocol: TCP
+  selector:
+    app.kubernetes.io/name: {{ $app.deployment | quote }}
+    app.kubernetes.io/instance: {{ $.Release.Name }}
+{{- end }}
